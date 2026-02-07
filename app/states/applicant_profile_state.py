@@ -1,7 +1,9 @@
 import reflex as rx
 from typing import Optional
-from app.states.db_state import DbState
 from app.states.auth_state import AuthState
+from app.database.models import User
+from app.database.connection import get_session
+from sqlmodel import select
 
 
 class ApplicantProfileState(rx.State):
@@ -21,12 +23,12 @@ class ApplicantProfileState(rx.State):
         if auth.current_user:
             user = auth.current_user
             self.temp_name = user["name"]
-            self.temp_phone = user.get("phone", "")
-            self.temp_location = user.get("location", "")
-            self.temp_bio = user.get("bio", "")
-            self.temp_skills = user.get("skills", [])
-            self.temp_experience = user.get("experience", "")
-            self.temp_education = user.get("education", "")
+            self.temp_phone = user.get("phone") or ""
+            self.temp_location = user.get("location") or ""
+            self.temp_bio = user.get("bio") or ""
+            self.temp_skills = user.get("skills") or []
+            self.temp_experience = user.get("experience") or ""
+            self.temp_education = user.get("education") or ""
 
     @rx.event
     def add_skill(self):
@@ -41,23 +43,21 @@ class ApplicantProfileState(rx.State):
     @rx.event
     async def save_profile(self):
         self.is_saving = True
-        db = await self.get_state(DbState)
         auth = await self.get_state(AuthState)
         uid = auth.current_user["id"]
-        for i, u in enumerate(db.users):
-            if u["id"] == uid:
-                db.users[i].update(
-                    {
-                        "name": self.temp_name,
-                        "phone": self.temp_phone,
-                        "location": self.temp_location,
-                        "bio": self.temp_bio,
-                        "skills": self.temp_skills,
-                        "experience": self.temp_experience,
-                        "education": self.temp_education,
-                    }
-                )
-                auth.current_user = db.users[i]
-                break
+        with get_session() as session:
+            user = session.exec(select(User).where(User.id == uid)).first()
+            if user:
+                user.name = self.temp_name
+                user.phone = self.temp_phone
+                user.location = self.temp_location
+                user.bio = self.temp_bio
+                user.skills = self.temp_skills
+                user.experience = self.temp_experience
+                user.education = self.temp_education
+                session.add(user)
+                session.commit()
+                session.refresh(user)
+                auth.current_user = user.model_dump()
         self.is_saving = False
         yield rx.toast("Profile updated", position="bottom-right")

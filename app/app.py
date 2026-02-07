@@ -12,6 +12,7 @@ from app.states.auth_state import AuthState
 from app.states.ats_state import ATSState
 from app.states.company_state import CompanyState
 from app.states.applicant_profile_state import ApplicantProfileState
+from app.database.connection import create_db_and_tables
 
 
 def index() -> rx.Component:
@@ -48,6 +49,7 @@ def index() -> rx.Component:
     )
 
 
+create_db_and_tables()
 app = rx.App(
     theme=rx.theme(appearance="light"),
     head_components=[

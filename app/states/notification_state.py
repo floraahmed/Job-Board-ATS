@@ -2,25 +2,28 @@ import reflex as rx
 from typing import Optional
 import uuid
 import datetime
-from app.models import Notification
-from app.states.db_state import DbState
+from app.models import Notification as NotificationDict
+from app.database.models import Notification
 from app.states.auth_state import AuthState
+from app.database.connection import get_session
+from sqlmodel import select, col
 
 
 class NotificationState(rx.State):
     show_notifications: bool = False
 
     @rx.var
-    async def my_notifications(self) -> list[Notification]:
-        db = await self.get_state(DbState)
+    async def my_notifications(self) -> list[NotificationDict]:
         auth = await self.get_state(AuthState)
         if not auth.current_user:
             return []
-        return sorted(
-            [n for n in db.notifications if n["user_id"] == auth.current_user["id"]],
-            key=lambda x: x["created_at"],
-            reverse=True,
-        )
+        with get_session() as session:
+            notes = session.exec(
+                select(Notification)
+                .where(Notification.user_id == auth.current_user["id"])
+                .order_by(col(Notification.created_at).desc())
+            ).all()
+            return [n.model_dump() for n in notes]
 
     @rx.var
     async def unread_count(self) -> int:
@@ -33,36 +36,47 @@ class NotificationState(rx.State):
 
     @rx.event
     async def mark_as_read(self, note_id: str):
-        db = await self.get_state(DbState)
-        for n in db.notifications:
-            if n["id"] == note_id:
-                n["is_read"] = True
-                break
+        with get_session() as session:
+            note = session.exec(
+                select(Notification).where(Notification.id == note_id)
+            ).first()
+            if note:
+                note.is_read = True
+                session.add(note)
+                session.commit()
 
     @rx.event
     async def mark_all_read(self):
-        db = await self.get_state(DbState)
         auth = await self.get_state(AuthState)
         if auth.current_user:
-            for n in db.notifications:
-                if n["user_id"] == auth.current_user["id"]:
-                    n["is_read"] = True
+            with get_session() as session:
+                notes = session.exec(
+                    select(Notification).where(
+                        Notification.user_id == auth.current_user["id"],
+                        Notification.is_read == False,
+                    )
+                ).all()
+                for n in notes:
+                    n.is_read = True
+                    session.add(n)
+                session.commit()
 
     @rx.event
     async def add_notification(
         self, user_id: str, title: str, message: str, n_type: str = "info"
     ):
-        db = await self.get_state(DbState)
-        new_note: Notification = {
-            "id": f"note_{uuid.uuid4().hex[:8]}",
-            "user_id": user_id,
-            "title": title,
-            "message": message,
-            "type": n_type,
-            "is_read": False,
-            "created_at": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
-        }
-        db.notifications.append(new_note)
+        with get_session() as session:
+            new_note = Notification(
+                id=f"note_{uuid.uuid4().hex[:8]}",
+                user_id=user_id,
+                title=title,
+                message=message,
+                type=n_type,
+                is_read=False,
+                created_at=datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+            )
+            session.add(new_note)
+            session.commit()
         auth = await self.get_state(AuthState)
         if auth.current_user and auth.current_user["id"] == user_id:
             yield rx.toast(f"{title}: {message}", position="top-right")

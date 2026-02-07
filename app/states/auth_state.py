@@ -1,7 +1,10 @@
 import reflex as rx
 from typing import Optional
 from app.states.db_state import DbState
-from app.models import User
+from app.models import User as UserDict
+from app.database.models import User, Company
+from app.database.connection import get_session
+from sqlmodel import select
 import uuid
 
 
@@ -10,7 +13,7 @@ class AuthState(rx.State):
     Manages authentication status and current user context.
     """
 
-    current_user: Optional[User] = None
+    current_user: Optional[UserDict] = None
     auth_token: str = ""
     login_email: str = ""
     login_password: str = ""
@@ -58,57 +61,58 @@ class AuthState(rx.State):
         db = await self.get_state(DbState)
         db.ensure_seeded()
         self.login_error = ""
-        user = next(
-            (
-                u
-                for u in db.users
-                if u["email"] == self.login_email
-                and u["password_hash"] == self.login_password
-            ),
-            None,
-        )
-        if user:
-            self.current_user = user
-            self.auth_token = str(uuid.uuid4())
-            if user["role"] == "employer":
-                return rx.redirect("/employer/dashboard")
+        with get_session() as session:
+            user = session.exec(
+                select(User).where(User.email == self.login_email)
+            ).first()
+            if user and user.password_hash == self.login_password:
+                self.current_user = user.model_dump()
+                self.auth_token = str(uuid.uuid4())
+                if user.role == "employer":
+                    return rx.redirect("/employer/dashboard")
+                else:
+                    return rx.redirect("/applicant/jobs")
             else:
-                return rx.redirect("/applicant/jobs")
-        else:
-            self.login_error = "Invalid email or password."
+                self.login_error = "Invalid email or password."
 
     @rx.event
     async def register(self):
         db = await self.get_state(DbState)
         db.ensure_seeded()
         self.reg_error = ""
-        if any((u["email"] == self.reg_email for u in db.users)):
-            self.reg_error = "Email already registered."
-            return
-        company_id = None
-        if self.reg_role == "employer":
-            if not self.reg_company_name:
-                self.reg_error = "Company Name is required for employers."
+        with get_session() as session:
+            existing = session.exec(
+                select(User).where(User.email == self.reg_email)
+            ).first()
+            if existing:
+                self.reg_error = "Email already registered."
                 return
-            company_id = f"comp_{uuid.uuid4().hex[:8]}"
-            new_company = {
-                "id": company_id,
-                "name": self.reg_company_name,
-                "logo": "/placeholder.svg",
-                "industry": "Unspecified",
-                "description": "New company.",
-            }
-            db.companies.append(new_company)
-        new_user = {
-            "id": f"user_{uuid.uuid4().hex[:8]}",
-            "email": self.reg_email,
-            "password_hash": self.reg_password,
-            "name": self.reg_name,
-            "role": self.reg_role,
-            "company_id": company_id,
-        }
-        db.users.append(new_user)
-        self.current_user = new_user
+            company_id = None
+            if self.reg_role == "employer":
+                if not self.reg_company_name:
+                    self.reg_error = "Company Name is required for employers."
+                    return
+                company_id = f"comp_{uuid.uuid4().hex[:8]}"
+                new_company = Company(
+                    id=company_id,
+                    name=self.reg_company_name,
+                    logo="/placeholder.svg",
+                    industry="Unspecified",
+                    description="New company.",
+                )
+                session.add(new_company)
+            new_user = User(
+                id=f"user_{uuid.uuid4().hex[:8]}",
+                email=self.reg_email,
+                password_hash=self.reg_password,
+                name=self.reg_name,
+                role=self.reg_role,
+                company_id=company_id,
+            )
+            session.add(new_user)
+            session.commit()
+            session.refresh(new_user)
+            self.current_user = new_user.model_dump()
         self.auth_token = str(uuid.uuid4())
         if self.reg_role == "employer":
             return rx.redirect("/employer/dashboard")

@@ -1,2 +1,3 @@
 faker
 reflex==0.8.24.post1
+sqlmodel
