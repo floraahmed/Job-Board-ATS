@@ -22,6 +22,23 @@ class User(TypedDict):
     name: str
     role: UserRole
     company_id: Optional[str]
+    phone: Optional[str]
+    location: Optional[str]
+    bio: Optional[str]
+    skills: Optional[list[str]]
+    resume: Optional[str]
+    experience: Optional[str]
+    education: Optional[str]
+
+
+class Notification(TypedDict):
+    id: str
+    user_id: str
+    title: str
+    message: str
+    type: str
+    is_read: bool
+    created_at: str
 
 
 class Job(TypedDict):

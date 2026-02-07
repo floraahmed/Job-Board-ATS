@@ -6,8 +6,12 @@ from app.pages.employer_jobs import job_form_page, job_listing_page, job_detail_
 from app.pages.applicant import browse_jobs_page, my_applications_page
 from app.pages.ats import ats_page
 from app.pages.employer_applications import all_applications_page
+from app.pages.employer_company import company_profile_page
+from app.pages.applicant_profile import applicant_profile_page
 from app.states.auth_state import AuthState
 from app.states.ats_state import ATSState
+from app.states.company_state import CompanyState
+from app.states.applicant_profile_state import ApplicantProfileState
 
 
 def index() -> rx.Component:
@@ -83,9 +87,9 @@ app.add_page(
     on_load=AuthState.ensure_data_loaded,
 )
 app.add_page(
-    lambda: rx.el.div("Company Placeholder"),
+    company_profile_page,
     route="/employer/company",
-    on_load=AuthState.ensure_data_loaded,
+    on_load=[AuthState.ensure_data_loaded, CompanyState.load_company],
 )
 app.add_page(
     browse_jobs_page, route="/applicant/jobs", on_load=AuthState.ensure_data_loaded
@@ -96,7 +100,7 @@ app.add_page(
     on_load=AuthState.ensure_data_loaded,
 )
 app.add_page(
-    lambda: rx.el.div("Profile Placeholder"),
+    applicant_profile_page,
     route="/applicant/profile",
-    on_load=AuthState.ensure_data_loaded,
+    on_load=[AuthState.ensure_data_loaded, ApplicantProfileState.load_profile],
 )

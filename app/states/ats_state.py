@@ -127,13 +127,17 @@ class ATSState(rx.State):
     async def move_stage(self, app_id: str, new_stage: str):
         db = await self.get_state(DbState)
         auth = await self.get_state(AuthState)
+        from app.states.notification_state import NotificationState
+
+        notes = await self.get_state(NotificationState)
         app_idx = -1
         for i, a in enumerate(db.applications):
             if a["id"] == app_id:
                 app_idx = i
                 break
         if app_idx >= 0:
-            old_stage = db.applications[app_idx]["status"]
+            app_data = db.applications[app_idx]
+            old_stage = app_data["status"]
             if old_stage != new_stage:
                 db.applications[app_idx]["status"] = new_stage
                 history_entry: ApplicationHistory = {
@@ -145,6 +149,12 @@ class ATSState(rx.State):
                     "notes": f"Moved from {old_stage} to {new_stage} by {auth.user_name}",
                 }
                 db.history.append(history_entry)
+                await notes.add_notification(
+                    app_data["applicant_id"],
+                    "Application Update",
+                    f"Your application status has been changed to {new_stage.replace('_', ' ')}.",
+                    "info",
+                )
                 yield rx.toast(
                     f"Application moved to {new_stage}", position="bottom-right"
                 )

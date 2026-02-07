@@ -5,6 +5,7 @@ import datetime
 from faker import Faker
 
 fake = Faker()
+from app.models import Company, User, Job, Application, ApplicationHistory, Notification
 
 
 class DbState(rx.State):
@@ -19,6 +20,7 @@ class DbState(rx.State):
     jobs: list[Job] = []
     applications: list[Application] = []
     history: list[ApplicationHistory] = []
+    notifications: list[Notification] = []
     _is_seeded: bool = False
 
     @rx.event

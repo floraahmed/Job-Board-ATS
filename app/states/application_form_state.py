@@ -44,6 +44,9 @@ class ApplicationFormState(rx.State):
     async def submit_application(self):
         db = await self.get_state(DbState)
         auth = await self.get_state(AuthState)
+        from app.states.notification_state import NotificationState
+
+        notes = await self.get_state(NotificationState)
         if not auth.current_user:
             yield rx.toast("Please login to apply", position="bottom-right")
             return
@@ -68,6 +71,23 @@ class ApplicationFormState(rx.State):
             "notes": "Application submitted by candidate.",
         }
         db.history.append(history_entry)
+        job = next((j for j in db.jobs if j["id"] == self.form_job_id), None)
+        if job:
+            employer = next(
+                (
+                    u
+                    for u in db.users
+                    if u["company_id"] == job["company_id"] and u["role"] == "employer"
+                ),
+                None,
+            )
+            if employer:
+                await notes.add_notification(
+                    employer["id"],
+                    "New Application",
+                    f"You received a new application for '{job['title']}' from {auth.user_name}.",
+                    "success",
+                )
         self.is_applying = False
         yield rx.toast("Application submitted successfully!", position="bottom-right")
         yield rx.redirect("/applicant/applications")
